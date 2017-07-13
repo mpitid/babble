@@ -67,7 +67,7 @@ The Babble node and the App are loosely coupled and can run in separate processe
 They communicate via a very simple **JSON-RPC** interface over a **TCP** connection. 
 
 The App submits transactions for consensus ordering via the **SubmitTx** endpoint  
-exposed by the **App Proxy**. Babble asynchrously processes transactions and  
+exposed by the **App Proxy**. Babble asynchronously processes transactions and  
 eventually feeds them back to the App, in consensus order,  with a **CommitTx**  
 message.
 
@@ -77,7 +77,7 @@ they represent. Therefore, encoding and decoding transactions is done by the App
 Apps must implement their own **Babble Proxy** to submit and receive committed  
 transactions from Babble. The advantage of using a JSON-RPC API is that there is  
 no restriction on the programming language for the App. It only requires a component    
-that sends SubmitTx messages to Babble and exposes a TCP enpoint where Babble can  
+that sends SubmitTx messages to Babble and exposes a TCP endpoint where Babble can  
 send CommitTx messages.
 
 When launching a Babble node, one must specify the address and port exposed by the  
@@ -122,7 +122,7 @@ calculates the consensus order.
 
 The list of peers must be predefined and known to all peers. At the moment, it is  
 not possible to dynamically modify the list of peers while the network is running  
-but this is not a limitation of the Hashgraph algorithm, just an implemention  
+but this is not a limitation of the Hashgraph algorithm, just an implementation  
 prioritization.
 
 ### Core
