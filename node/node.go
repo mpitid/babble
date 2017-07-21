@@ -155,6 +155,7 @@ func (n *Node) Run(gossip bool) {
 			n.logger.Debug("node shutting down")
 			return
 		default:
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 }
