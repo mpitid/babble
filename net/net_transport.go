@@ -228,23 +228,31 @@ func (n *NetworkTransport) genericRPC(target string, rpcType uint8, args interfa
 	// Get a conn
 	conn, err := n.getConn(target, n.timeout)
 	if err != nil {
+		n.logger.Debugf("failed to acquire connection to %s after %d: %v", target, n.timeout, err)
 		return err
 	}
 
 	// Set a deadline
 	if n.timeout > 0 {
+		n.logger.Debugf("setting connection deadline to now() + %d", n.timeout)
 		conn.conn.SetDeadline(time.Now().Add(n.timeout))
 	}
 
 	// Send the RPC
-	if err = sendRPC(conn, rpcType, args); err != nil {
+	if err = sendRPC(conn, rpcType, args, n.logger); err != nil {
+		n.logger.Debugf("error sending RPC: %v", err)
 		return err
 	}
 
 	// Decode the response
-	canReturn, err := decodeResponse(conn, resp)
+	n.logger.Debugf("decoding response: %v", resp)
+	canReturn, err := decodeResponse(conn, resp, n.logger)
 	if canReturn {
+		n.logger.Debug("returning reusable connection to pool")
 		n.returnConn(conn)
+	}
+	if err != nil {
+		n.logger.Debugf("error decoding response: %v", err)
 	}
 	return err
 }
@@ -351,43 +359,52 @@ func (n *NetworkTransport) handleCommand(r *bufio.Reader, dec *gob.Decoder, enc 
 
 // decodeResponse is used to decode an RPC response and reports whether
 // the connection can be reused.
-func decodeResponse(conn *netConn, resp interface{}) (bool, error) {
+func decodeResponse(conn *netConn, resp interface{}, log *logrus.Logger) (bool, error) {
 	// Decode the error if any
 	var rpcError string
 	if err := conn.dec.Decode(&rpcError); err != nil {
+		log.Debugf("error decoding RPC error: %v", err)
 		conn.Release()
 		return false, err
 	}
 
 	// Decode the response
 	if err := conn.dec.Decode(resp); err != nil {
+		log.Debugf("error decoding RPC response: %v", err)
 		conn.Release()
 		return false, err
 	}
 
 	// Format an error if any
 	if rpcError != "" {
+		log.Debugf("RPC error: %v", rpcError)
 		return true, fmt.Errorf(rpcError)
 	}
 	return true, nil
 }
 
 // sendRPC is used to encode and send the RPC.
-func sendRPC(conn *netConn, rpcType uint8, args interface{}) error {
+func sendRPC(conn *netConn, rpcType uint8, args interface{}, log *logrus.Logger) error {
+	log.WithField("rpc_type", rpcType).
+		WithField("connection", conn).
+		WithField("args", args).Debug("sending RPC")
 	// Write the request type
 	if err := conn.w.WriteByte(rpcType); err != nil {
+		log.Debugf("failed to write rpcType: %v", err)
 		conn.Release()
 		return err
 	}
 
 	// Send the request
 	if err := conn.enc.Encode(args); err != nil {
+		log.Debugf("failed to encode args: %v", err)
 		conn.Release()
 		return err
 	}
 
 	// Flush
 	if err := conn.w.Flush(); err != nil {
+		log.Debugf("failed to flush writer: %v", err)
 		conn.Release()
 		return err
 	}

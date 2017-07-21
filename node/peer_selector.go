@@ -46,6 +46,7 @@ func (ps *RandomPeerSelector) Peers() []net.Peer {
 	return ps.peers
 }
 
+// TODO: Excluding the last peer seems like a bad idea in the random selector
 func (ps *RandomPeerSelector) UpdateLast(peer string) {
 	ps.last = peer
 }

@@ -117,6 +117,7 @@ func (n *Node) RunAsync(gossip bool) {
 }
 
 func (n *Node) Run(gossip bool) {
+	n.logger.WithField("gossip", gossip).Debug("node running")
 	n.start = time.Now()
 	heartbeatTimer := randomTimeout(n.conf.HeartbeatTimeout)
 	for {
@@ -124,10 +125,12 @@ func (n *Node) Run(gossip bool) {
 		case rpc := <-n.netCh:
 			n.logger.Debug("Processing RPC")
 			n.processRPC(rpc)
-		case <-heartbeatTimer:
+		case ts := <-heartbeatTimer:
 			if gossip {
-				n.logger.Debug("Time to gossip!")
 				peer := n.peerSelector.Next()
+				n.logger.WithField("peer", peer).
+					 WithField("time", ts).
+					 Debug("timeout elapsed, starting random gossip")
 				go n.gossip(peer.NetAddr)
 			}
 			heartbeatTimer = randomTimeout(n.conf.HeartbeatTimeout)
@@ -140,6 +143,7 @@ func (n *Node) Run(gossip bool) {
 				n.logger.WithField("error", err).Error("Committing Event")
 			}
 		case <-n.shutdownCh:
+			n.logger.Debug("node shutting down")
 			return
 		default:
 		}
@@ -342,6 +346,7 @@ func (n *Node) SyncRate() float64 {
 	return 1 - syncErrorRate
 }
 
+// TODO: this timer is biased, also what behaviour are we modelling and what's the rational?
 func randomTimeout(minVal time.Duration) <-chan time.Time {
 	if minVal == 0 {
 		return nil
