@@ -805,3 +805,16 @@ func setVote(votes map[string]map[string]bool, x, y string, vote bool) {
 	}
 	votes[x][y] = vote
 }
+
+func (h *Hashgraph) HasUncommittedTx() (bool, error) {
+	for _, hash := range h.UndeterminedEvents {
+		event, err := h.Store.GetEvent(hash)
+		if err != nil {
+			return false, err
+		}
+		if event.IsLoaded() {
+			return true, nil
+		}
+	}
+	return false, nil
+}

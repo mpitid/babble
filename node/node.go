@@ -127,7 +127,7 @@ func (n *Node) Run(gossip bool) {
 			n.processRPC(rpc)
 		case ts := <-heartbeatTimer:
 			if gossip {
-				proceed, err := n.preGossip()
+				proceed, err := n.shouldGossip()
 				if proceed && err == nil {
 					peer := n.peerSelector.Next()
 					n.logger.
@@ -203,7 +203,7 @@ func (n *Node) processSyncRequest(rpc net.RPC, cmd *net.SyncRequest) {
 	rpc.Respond(resp, err)
 }
 
-func (n *Node) preGossip() (bool, error) {
+func (n *Node) shouldGossip() (bool, error) {
 	n.coreLock.Lock()
 	defer n.coreLock.Unlock()
 
@@ -220,7 +220,7 @@ func (n *Node) preGossip() (bool, error) {
 		WithField("transactions", pendingTransactions).
 		Debug("ready to gossip self-event")
 
-	return true, nil
+	return n.core.hg.HasUncommittedTx()
 }
 
 func (n *Node) gossip(peerAddr string) error {
