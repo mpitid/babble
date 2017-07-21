@@ -34,6 +34,8 @@ import (
 	"github.com/babbleio/babble/proxy"
 	aproxy "github.com/babbleio/babble/proxy/app"
 	"github.com/babbleio/babble/service"
+	"runtime/pprof"
+	"os/signal"
 )
 
 var (
@@ -91,6 +93,16 @@ var (
 		Usage: "Number of items in LRU caches",
 		Value: 500,
 	}
+	CpuProfileFlag = cli.StringFlag{
+		Name: "cpu_profile",
+		Usage: "file to write CPU profiling info",
+		Value: "",
+	}
+	MemProfileFlag = cli.StringFlag{
+		Name: "mem_profile",
+		Usage: "file to write heap profiling info",
+		Value: "",
+	}
 )
 
 func main() {
@@ -119,6 +131,8 @@ func main() {
 				MaxPoolFlag,
 				TcpTimeoutFlag,
 				CacheSizeFlag,
+				CpuProfileFlag,
+				MemProfileFlag,
 			},
 		},
 	}
@@ -154,6 +168,8 @@ func run(c *cli.Context) error {
 	maxPool := c.Int(MaxPoolFlag.Name)
 	tcpTimeout := c.Int(TcpTimeoutFlag.Name)
 	cacheSize := c.Int(CacheSizeFlag.Name)
+	cpuProfile := c.String(CpuProfileFlag.Name)
+	memProfile := c.String(MemProfileFlag.Name)
 	logger.WithFields(logrus.Fields{
 		"datadir":      datadir,
 		"node_addr":    addr,
@@ -165,7 +181,28 @@ func run(c *cli.Context) error {
 		"max_pool":     maxPool,
 		"tcp_timeout":  tcpTimeout,
 		"cache_size":   cacheSize,
+		"cpu_profile":  cpuProfile,
+		"mem_profile":  memProfile,
 	}).Debug("RUN")
+
+	if cpuProfile != "" {
+		f, err := os.Create(cpuProfile)
+		if err != nil {
+			return cli.NewExitError(fmt.Sprintf("failed to open CPU profile file %v", cpuProfile), 2)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		go func(){
+			for range c {
+				// sig is a ^C, handle it
+				pprof.StopCPUProfile()
+				writeMemProfile(memProfile)
+				os.Exit(127)
+			}
+		}()
+	}
 
 	conf := node.NewConfig(time.Duration(heartbeat)*time.Millisecond,
 		time.Duration(tcpTimeout)*time.Millisecond,
@@ -211,6 +248,22 @@ func run(c *cli.Context) error {
 
 	node.Run(true)
 
+	return writeMemProfile(memProfile)
+}
+
+func writeMemProfile(filename string) error {
+	if filename == "" {
+		return nil
+	}
+	f, err := os.Create(filename)
+	if err != nil {
+		return cli.NewExitError(fmt.Sprintf("failed to open heap profile file %v: %v", filename, err), 2)
+	}
+	defer f.Close()
+	runtime.GC() // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		return cli.NewExitError(fmt.Sprintf("failed to write heap profile data: %v", err), 2)
+	}
 	return nil
 }
 
