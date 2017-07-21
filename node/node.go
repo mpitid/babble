@@ -219,6 +219,7 @@ func (n *Node) shouldGossip() (bool, error) {
 
 	n.logger.
 		WithField("transactions", pendingTransactions).
+		WithField("uncommitted", len(n.core.hg.UndeterminedEvents)).
 		Debug("ready to gossip self-event")
 
 	return n.core.hg.HasUncommittedTx()
