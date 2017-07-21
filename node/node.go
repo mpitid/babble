@@ -133,8 +133,13 @@ func (n *Node) Run(gossip bool) {
 					n.logger.
 						WithField("peer", peer).
 						WithField("time", ts).
-						Debug("timeout elapsed, starting random gossip")
+						Debug("timeout elapsed: starting random gossip")
 					go n.gossip(peer.NetAddr)
+				} else {
+					n.logger.
+						WithField("proceed", proceed).
+						WithField("error", err).
+						Debug("timeout elapsed: skipping random gossip")
 				}
 			}
 			heartbeatTimer = randomTimeout(n.conf.HeartbeatTimeout)
@@ -205,15 +210,15 @@ func (n *Node) preGossip() (bool, error) {
 	pendingTransactions := len(n.transactionPool)
 	if pendingTransactions > 0 {
 		if err := n.core.AddSelfEvent(n.transactionPool); err != nil {
-			n.logger.WithField("error", err).Error("Adding SelfEvent")
+			n.logger.WithField("error", err).Error("failed to add self-event")
 			return false, err
 		}
 		n.transactionPool = [][]byte{}
 	}
 
-	n.logger.WithFields(logrus.Fields{
-		"transactions": pendingTransactions,
-	}).Debug("Self-Event")
+	n.logger.
+		WithField("transactions", pendingTransactions).
+		Debug("ready to gossip self-event")
 
 	return true, nil
 }
