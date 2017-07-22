@@ -84,7 +84,7 @@ func run(c *cli.Context) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	var text string
 	for text != "q" { // break the loop if text == "q"
-		fmt.Print("Enter your text: ")
+		fmt.Print("Enter message (or 'q' to quit): ")
 		scanner.Scan()
 		text = scanner.Text()
 		if text != "q" {
