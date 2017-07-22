@@ -127,20 +127,15 @@ func (n *Node) Run(gossip bool) {
 			n.processRPC(rpc)
 		case ts := <-heartbeatTimer:
 			if gossip {
-				proceed, err := n.shouldGossip()
-				if proceed && err == nil {
-					peer := n.peerSelector.Next()
-					n.logger.
-						WithField("peer", peer).
-						WithField("time", ts).
-						Debug("timeout elapsed: starting random gossip")
-					go n.gossip(peer.NetAddr)
-				} else {
-					n.logger.
-						WithField("proceed", proceed).
-						WithField("error", err).
-						Debug("timeout elapsed: skipping random gossip")
+				if err := n.bundlePendingTx(); err != nil {
+					n.logger.WithField("error", err).Debug("heartbeat: skipping random gossip")
 				}
+				peer := n.peerSelector.Next()
+				n.logger.
+					WithField("peer", peer).
+					WithField("time", ts).
+					Debug("heartbeat: starting random gossip")
+				go n.gossip(peer.NetAddr)
 			}
 			heartbeatTimer = randomTimeout(n.conf.HeartbeatTimeout)
 		case t := <-n.submitCh:
@@ -202,25 +197,21 @@ func (n *Node) processSyncRequest(rpc net.RPC, cmd *net.SyncRequest) {
 	rpc.Respond(resp, err)
 }
 
-func (n *Node) shouldGossip() (bool, error) {
+// Bundle pending transactions into a `self-event`.
+func (n *Node) bundlePendingTx() error {
 	n.coreLock.Lock()
 	defer n.coreLock.Unlock()
 
 	pendingTransactions := len(n.transactionPool)
 	if pendingTransactions > 0 {
+		n.logger.WithField("transactions", pendingTransactions).Debug("adding self-event")
 		if err := n.core.AddSelfEvent(n.transactionPool); err != nil {
 			n.logger.WithField("error", err).Error("failed to add self-event")
-			return false, err
+			return err
 		}
 		n.transactionPool = [][]byte{}
 	}
-
-	n.logger.
-		WithField("transactions", pendingTransactions).
-		WithField("uncommitted", len(n.core.hg.UndeterminedEvents)).
-		Debug("ready to gossip self-event")
-
-	return n.core.hg.HasUncommittedTx()
+	return nil
 }
 
 func (n *Node) gossip(peerAddr string) error {
