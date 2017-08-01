@@ -36,6 +36,7 @@ import (
 	"github.com/babbleio/babble/service"
 	"runtime/pprof"
 	"os/signal"
+	"github.com/babbleio/babble/api"
 )
 
 var (
@@ -67,6 +68,11 @@ var (
 		Name:  "service_addr",
 		Usage: "IP:Port of HTTP Service",
 		Value: "127.0.0.1:80",
+	}
+	ApiAddressFlag = cli.StringFlag{
+		Name: "api",
+		Usage: "HOST:PORT for HTTP API",
+		Value: "127.0.0.01:5252",
 	}
 	LogLevelFlag = cli.StringFlag{
 		Name:  "log_level",
@@ -126,6 +132,7 @@ func main() {
 				ProxyAddressFlag,
 				ClientAddressFlag,
 				ServiceAddressFlag,
+				ApiAddressFlag,
 				LogLevelFlag,
 				HeartbeatFlag,
 				MaxPoolFlag,
@@ -164,6 +171,7 @@ func run(c *cli.Context) error {
 	proxyAddress := c.String(ProxyAddressFlag.Name)
 	clientAddress := c.String(ClientAddressFlag.Name)
 	serviceAddress := c.String(ServiceAddressFlag.Name)
+	apiAddress := c.String(ApiAddressFlag.Name)
 	heartbeat := c.Int(HeartbeatFlag.Name)
 	maxPool := c.Int(MaxPoolFlag.Name)
 	tcpTimeout := c.Int(TcpTimeoutFlag.Name)
@@ -177,6 +185,7 @@ func run(c *cli.Context) error {
 		"proxy_addr":   proxyAddress,
 		"client_addr":  clientAddress,
 		"service_addr": serviceAddress,
+		"api_address":  apiAddress,
 		"heartbeat":    heartbeat,
 		"max_pool":     maxPool,
 		"tcp_timeout":  tcpTimeout,
@@ -240,7 +249,12 @@ func run(c *cli.Context) error {
 			conf.TCPTimeout, logger)
 	}
 
-	node := node.NewNode(conf, key, peers, trans, prox)
+	nodeApi, err := api.Http(apiAddress, 2, logger.WithField("listening", apiAddress))
+	if err != nil {
+		return err
+	}
+	go nodeApi.Serve()
+	node := node.NewNode(conf, key, peers, trans, prox, nodeApi.ReplicaAPI)
 	node.Init()
 
 	serviceServer := service.NewService(serviceAddress, &node, logger)

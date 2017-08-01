@@ -30,6 +30,7 @@ import (
 	hg "github.com/babbleio/babble/hashgraph"
 	"github.com/babbleio/babble/net"
 	"github.com/babbleio/babble/proxy"
+	"github.com/babbleio/babble/api"
 )
 
 type Node struct {
@@ -63,9 +64,11 @@ type Node struct {
 	start        time.Time
 	syncRequests int
 	syncErrors   int
+
+	api *api.ReplicaAPI
 }
 
-func NewNode(conf *Config, key *ecdsa.PrivateKey, participants []net.Peer, trans net.Transport, proxy proxy.AppProxy) Node {
+func NewNode(conf *Config, key *ecdsa.PrivateKey, participants []net.Peer, trans net.Transport, proxy proxy.AppProxy, api *api.ReplicaAPI) Node {
 	localAddr := trans.LocalAddr()
 
 	sort.Sort(net.ByPubKey(participants))
@@ -98,6 +101,7 @@ func NewNode(conf *Config, key *ecdsa.PrivateKey, participants []net.Peer, trans
 		commitCh:        commitCh,
 		shutdownCh:      make(chan struct{}),
 		transactionPool: [][]byte{},
+		api:             api,
 	}
 	return node
 }
@@ -138,6 +142,10 @@ func (n *Node) Run(gossip bool) {
 				go n.gossip(peer.NetAddr)
 			}
 			heartbeatTimer = randomTimeout(n.conf.HeartbeatTimeout)
+		case cmd := <-n.api.InputChannel():
+			for _, t := range cmd.(api.SubmitTxCmd).Transactions {
+				n.transactionPool = append(n.transactionPool, t)
+			}
 		case t := <-n.submitCh:
 			n.logger.Debug("Adding Transaction")
 			n.transactionPool = append(n.transactionPool, t)
@@ -146,9 +154,24 @@ func (n *Node) Run(gossip bool) {
 			if err := n.Commit(events); err != nil {
 				n.logger.WithField("error", err).Error("Committing Event")
 			}
+			n.processNotifications(events)
 		case <-n.shutdownCh:
 			n.logger.Debug("node shutting down")
 			return
+		}
+	}
+}
+
+func (n *Node) processNotifications(events []hg.Event) {
+	n.logger.Debugf("processing notifications for %d events", len(events))
+	for _, event := range events {
+		txs := event.Transactions()
+		if len(txs) > 0 {
+			n.logger.Debugf("notification for %d transactions", len(txs))
+			// TODO: eventually move to blocking notifications.
+			n.api.NotifyAsync(api.CommitTxEv{txs}, n.logger)
+		} else {
+			n.logger.Debugf("skipping notification for event with no payload")
 		}
 	}
 }
